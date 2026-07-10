@@ -1,99 +1,296 @@
-from telegram import Update, InputMediaPhoto
+import os
+from dotenv import load_dotenv
+
+from flask import Flask
+from telegram import (
+    Update,
+    InputMediaPhoto,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+
 from telegram.ext import (
     Application,
     CommandHandler,
-    ContextTypes,
+    CallbackQueryHandler,
+    ContextTypes
 )
 
-TOKEN = "8902552924:AAHHQdwJ9Qds5thma5YSzBAiqDa--lOr5js"
+
+load_dotenv()
+
+
+TOKEN = os.getenv("BOT_TOKEN")
+
 
 # =========================
-# MENU
+# Flask (Render health check)
 # =========================
+
+web = Flask(__name__)
+
+
+@web.route("/")
+def home():
+    return "Telegram Food Bot Running"
+
+
+# =========================
+# Food Menu Data
+# =========================
+
 foods = {
 
-    "Food": {
-        "name": "🍛 មុខម្ហូប (Food)",
-        "images": [
-            "images/foods/food1.jpg",
-            "images/foods/food2.jpg", 
-            "images/foods/food3.jpg", 
-        ]
+    "pizza": {
+        "name": "🍕 Pizza",
+        "price": "$5.00",
+        "image": "https://i.imgur.com/3ZQ3ZQ3.jpeg"
     },
 
-    "Drink": {
-        "name": "🥤 ភេសជ្ជៈ (Drink)",
-        "images": [
-            "images/drinks/drink1.jpg",
-             
-        ]
+    "burger": {
+        "name": "🍔 Burger",
+        "price": "$3.50",
+        "image": "https://i.imgur.com/5bK9y5V.jpeg"
     },
 
-    "Beer": {
-        "name": "🍺 ស្រាបៀរ (Beer)",
-        "images": [
-            "images/beers/beer1.jpg",
-            "images/beers/beer2.jpg",
-            "images/beers/beer3.jpg",
-             
-        ]
-    },
+    "coffee": {
+        "name": "☕ Coffee",
+        "price": "$2.00",
+        "image": "https://i.imgur.com/6X9X9X9.jpeg"
+    }
 
 }
 
 
 # =========================
-# START COMMAND
+# /start command
 # =========================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "🍕 Pizza",
+                callback_data="pizza"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🍔 Burger",
+                callback_data="burger"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "☕ Coffee",
+                callback_data="coffee"
+            )
+        ]
+
+    ]
+
+
+    reply = InlineKeyboardMarkup(keyboard)
+
+
     await update.message.reply_text(
-        "🍴 សូមស្វាគមន៍មកកាន់ Food Shop\n\n"
-        "📋 ម៉ឺនុយរបស់យើង"
+        """
+Welcome to Seko Food 🍽️
+
+Please select your food:
+        """,
+        reply_markup=reply
     )
 
-    for category in foods.values():
 
-        media = []
-        opened_files = []
 
-        for index, image_path in enumerate(category["images"]):
+# =========================
+# Button Click
+# =========================
 
-            photo = open(image_path, "rb")
-            opened_files.append(photo)
+async def menu_click(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+):
 
-            media.append(
-                InputMediaPhoto(
-                    media=photo,
-                    caption=category["name"] if index == 0 else ""
-                )
+    query = update.callback_query
+
+    await query.answer()
+
+
+    food_id = query.data
+
+
+    food = foods[food_id]
+
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "🛒 Order Now",
+                callback_data=f"order_{food_id}"
             )
+        ],
 
-        # Send album
-        await update.message.reply_media_group(media=media)
+        [
+            InlineKeyboardButton(
+                "⬅ Back",
+                callback_data="back"
+            )
+        ]
 
-        # Close files
-        for file in opened_files:
-            file.close()
+    ]
+
+
+    await query.message.reply_photo(
+
+        photo=food["image"],
+
+        caption=f"""
+{food['name']}
+
+💵 Price: {food['price']}
+
+Thank you ❤️
+        """,
+
+        reply_markup=InlineKeyboardMarkup(keyboard)
+
+    )
+
 
 
 # =========================
-# MAIN
+# Order
 # =========================
-def main():
 
-    app = (
-        Application.builder()
+async def order(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+
+    food_id = query.data.replace(
+        "order_",
+        ""
+    )
+
+
+    food = foods[food_id]
+
+
+    await query.message.reply_text(
+
+        f"""
+✅ Order Received
+
+Food:
+{food['name']}
+
+Price:
+{food['price']}
+
+Please contact admin for payment.
+
+📞 012345678
+        """
+
+    )
+
+
+
+# =========================
+# Back Menu
+# =========================
+
+async def back(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+):
+
+    await start(update, context)
+
+
+
+# =========================
+# Telegram Bot Setup
+# =========================
+
+
+def run_bot():
+
+    application = (
+        Application
+        .builder()
         .token(TOKEN)
         .build()
     )
 
-    app.add_handler(CommandHandler("start", start))
 
-    print("🍴 Food Shop Bot Running...")
+    application.add_handler(
+        CommandHandler(
+            "start",
+            start
+        )
+    )
 
-    app.run_polling()
 
+    application.add_handler(
+        CallbackQueryHandler(
+            menu_click,
+            pattern="^(pizza|burger|coffee)$"
+        )
+    )
+
+
+    application.add_handler(
+        CallbackQueryHandler(
+            order,
+            pattern="^order_"
+        )
+    )
+
+
+    application.add_handler(
+        CallbackQueryHandler(
+            back,
+            pattern="^back$"
+        )
+    )
+
+
+    print("Telegram Bot Started")
+
+
+    application.run_polling()
+
+
+
+# =========================
+# Run
+# =========================
 
 if __name__ == "__main__":
-    main()
+
+    import threading
+
+
+    threading.Thread(
+        target=lambda:
+        web.run(
+            host="0.0.0.0",
+            port=10000
+        )
+    ).start()
+
+
+    run_bot()
